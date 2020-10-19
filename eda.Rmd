@@ -1,0 +1,184 @@
+```{r}
+
+library(tidyverse)
+library(lubridate)
+
+theme_set(theme_minimal())
+
+dat <- read.csv(
+    file = here::here("GlobalGiving Data Analyst Take Home Assignment/globalgiving_data_analyst_take_home_data.csv"),
+    stringsAsFactors = FALSE,
+    na.strings = "NULL"
+) %>%
+    mutate_at(vars(matches("project.*date"), last_login), ymd_hms) %>%
+    mutate_at(vars(matches("field.*date"), matches("vetting.*date")), ymd) %>%
+    mutate(all_time_unque_project_themes = 
+            if_else(all_time_unque_project_themes == "", "None", all_time_unque_project_themes))
+
+
+dat %>%
+    map(function(x) sum(is.na(x)))
+
+str(dat)
+```
+Duplicates
+
+```{r}
+
+dat %>%
+    group_by(name) %>%
+    filter(max(row_number()) > 1) %>%
+    count(id, name, original_vetting_approval_date,
+          sort = TRUE) %>%
+    View()
+
+```
+
+How does someone get a duplicate entry? For now we will treat them as separate entitites.
+
+## project themes
+
+```{r}
+
+dat_tidy <- dat %>%
+    separate_rows(all_time_unque_project_themes, sep = ",")
+
+dat_tidy %>%
+    count(all_time_unque_project_themes, sort = TRUE)
+
+dat_tidy %>%
+    count(name, all_time_unque_project_themes, sort = TRUE) %>%
+    filter(n > 1)
+
+```
+
+## duration of engagement
+
+```{r}
+
+dat %>%
+    count(status, sort = TRUE)
+
+
+dat %>%
+    filter(is.na(original_vetting_approval_date)) %>%
+    count(most_recent_vetting_approval_date)
+
+```
+because some programs never start or complete projects, maybe there survival analysis is somethign that could work here
+
+If an organizastion doesn't have an original vetting date, they do not have any projects with a deactivation date in future, nor do they have a most recent vetting date. It would seem to meant that these organizations are out of compliance. Original vetting date can't be used as an indicator of the start of their relationship with global giving,a nd instead earliest project created date should be used. 
+
+```{r}
+
+dat_ret <- dat %>%
+    mutate(
+        ret_time = as.integer(as.Date(most_recent_project_deactivation_date) - 
+                              as.Date(earliest_project_created_date)))
+
+dat_ret %>%
+    ggplot(aes(ret_time, fill = status)) +
+        geom_histogram(binwidth = 100)
+
+```
+```{r}
+
+dat %>%
+    group_by(no_proj = is.na(earliest_project_created_date),
+             no_vet = is.na(original_vetting_approval_date)) %>%
+    count(status)
+
+```
+
+## Metrics
+
+The first need to is to figure out we are going to define retention.
+
+There are a few options:
+
+- Status: is an organization delinquent? How long should it take to go from emerging to leader, etc? (not sure we can answer this last question because we only have status at a single time)
+- Does the orgazniation currently have an active project? Nubmer of funded projects? 
+- active contacts
+
+Then there are other variables you'd want to include the analysis, including:
+- country
+- budget
+- year founded
+- acquisition source
+
+### status
+
+```{r}
+
+dat_ret %>
+    count(status) %>%
+    mutate(status = fct_reorder(status, n)) %>%
+    ggplot(aes(status, n)) +
+        geom_col() +
+        coord_flip()
+
+
+dat_ret %>%
+    mutate(
+        time_since_first_project = as.integer(today() - as.Date(earliest_project_created_date)),
+        status = if_else(status %in% c("Leader", "Partner", "Superstar"), "Committed", status)) %>%
+    ggplot(aes(time_since_first_project, fill = status)) +
+        geom_histogram(binwidth = 100)
+
+```
+
+Organizations start as emerging, and then move to delinquent or leader/partner/superstar.
+
+Are there indicators of what pushes them in that direction? 
+
+### Projects
+
+Number of of organizations that are emerging but have an active project ending with no others in process.
+
+```{r}
+
+dat_ret %>%
+    count(
+        status,
+        project_created = !is.na(earliest_project_created_date),
+        project_active = !is.na(most_recent_project_deactivation_date) &
+            most_recent_project_deactivation_date <= today()
+    )
+
+
+```
+
+```{r}
+
+dat_ret %>%
+    mutate(number_of_currently_active_projects = if_else(is.na(number_of_currently_active_projects), 0L, number_of_currently_active_projects)) %>%
+    ggplot(aes(number_of_currently_active_projects)) +
+        geom_bar()
+
+```
+
+### active contacts
+
+```{r}
+dat %>%
+    ggplot(aes(active_contacts, fill = status)) +
+        geom_bar()
+
+```
+
+## Visualizations
+
+Two needs:
+
+1. High level, are we doing better at keeping people around? 
+2. Low level, who are the organizations that are need of intervention of some kind?
+
+## Further Analysis
+
+Perhaps we would want to predict when an organization might be likely to become delinquent. We could do that if we had a more complete data set (rather than this summary table) of all the status changes and time stamps. 
+
+
+
+
+
+

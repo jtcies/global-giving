@@ -1,0 +1,424 @@
+```{r}
+library(tidyverse)
+library(lubridate)
+library(tidytext)
+library(maps)
+library(scales)
+library(survival)
+library(broom)
+
+theme_set(theme_minimal())
+
+## cacluate the months since another variable
+calc_months_since <- function(date) {
+    require(lubridate)
+    month(as.period(interval(date, today()), "month"))
+}
+
+dat <- read.csv(
+    file = here::here("GlobalGiving Data Analyst Take Home Assignment/globalgiving_data_analyst_take_home_data.csv"),
+    stringsAsFactors = FALSE,
+    na.strings = c("NULL", "<NA>", "NA")
+) %>%
+    mutate_at(vars(matches("project.*date"), last_login), ymd_hms) %>%
+    mutate_at(vars(matches("field.*date"), matches("vetting.*date")), ymd) %>%
+    mutate(
+        all_time_unque_project_themes = 
+            if_else(all_time_unque_project_themes == "", 
+                    "None", all_time_unque_project_themes),
+        status = fct_relevel(status,
+                             c("Delinquent - Due Diligence",
+                             "Emerging",
+                             "Partner",
+                             "Leader",
+                             "Superstar")))
+
+```
+
+## Introduction 
+
+There are various ways to measure whether an organization is retained, such as:
+
+- Has a currently active project;
+- Has had an active or funded project in the past year (or some other time frame);
+- Has an active vetting or status.
+
+As organizations may have different numbers of projects at different times, 'status' is the best variable to indicate whether an organzation is active ('Emerging' or above) or 'Delinquent'.  
+
+The chart below shows the count of organizations at each status compared to the number of days since their first project. I've lumped Partner, Leader, and Superstar statuses together into a 'Member' status.
+
+```{r}
+
+dat %>%
+    filter(!is.na(earliest_project_created_date)) %>%
+    mutate(
+        status = case_when(
+            as.character(status) %in% c("Leader", "Superstar", "Partner") ~ "Member",
+            str_detect(as.character(status), "Delinquent") ~ "Delinquent",
+            TRUE ~ as.character(status)
+        ),
+        months_since_first_project = month(as.period(interval(
+            earliest_project_created_date, today()), "month"
+        ))
+    ) %>%
+    group_by(months_since_first_project) %>%
+    count(status) %>%
+    mutate(pct = n / sum(n)) %>%
+    filter(months_since_first_project <= 100) %>%
+    ggplot(aes(months_since_first_project, pct, color = status)) +
+        geom_line() +
+        geom_vline(xintercept = 24, lty = 2, color = "grey") +
+        scale_color_manual(
+            values = c("red", "blue", "green") 
+        ) +
+        scale_y_continuous(labels = percent) +
+        labs(x = "months since first project",
+             y = "percent of organizations at each time period",
+             title = "Organizations transition from 'Emerging' after two years")
+
+```
+
+While there will always be natural attrition over time, two years (marked by the vertical dashed line) is the point as which organizations change from 'Emerging' to 'Delinquent' status. It appears that the percent of organizations at the 'Committed' stage remains relatively constant over time. At two years, there is a decrease in the proportion of organizations at the 'Emerging' stage and a similar increase in the proportion of organizations at the 'Delinquent' status, without a substantial change in the number of 'Committed' organizations. Presumably, organizations came move up to a member status at any time, but after two years will automatically become delinquent if they have not taken steps to become a full member. 
+
+The goal then, is to determine how we can successfully move organizations from 'Emerging' to a 'Committed' status within the first two years of their engagement.
+
+How does an organization become 'Delinquent'? 
+
+All organizations who have a vetting expiration date in the past are delinquent. Similary, organizations do not have an expiration more than two years in the future, regardless of status. 
+
+```{r}
+
+dat %>%
+    mutate(months_until_expiration = -calc_months_since(vetting_expiration_date)) %>%
+    ggplot(aes(months_until_expiration, fill = status)) +
+        geom_histogram(binwidth = 3) +
+        geom_vline(xintercept = 24, lty = 2, color = "grey") +
+        labs(
+            x = "months until expiration (negative indicates expired)",
+            y = "count of organizations",
+            title = "Vetting lasts two years",
+            subtitle = "vertical line shows two years from today"
+        )
+
+```
+
+The Accelerator Program allows organizations to skip the 'Emerging' status, but those organizations can still fall 'Delinquent' after two years. 
+
+```{r}
+
+dat %>%
+    filter(completed_accelerator_program == 1) %>%
+    mutate(months_since_first_project = calc_months_since(earliest_project_created_date)) %>%
+    ggplot(aes(months_since_first_project, fill = status)) +
+        geom_histogram(binwidth = 3) +
+        labs(
+            x = "months since first project creation",
+            y = "count of organizations",
+            title = "The Accelerator Program allows organizations to skip the 'Emerging' stage",
+            subtitle = "Status of organizations completing Accelerator Prog5ram"
+        )
+
+```
+Similarly, coporate referrals also skip the 'Emerging' stage. 
+
+```{r}
+
+dat %>%
+    mutate(acquisition_source_category = fct_lump_n(acquisition_source_category, 9))%>%
+    filter(acquisition_source_category != "blank", !is.na(acquisition_source_category)) %>%
+    mutate(months_since_first_project = calc_months_since(earliest_project_created_date),
+           acquisition_source_category = str_replace_all(acquisition_source_category, "_", " ")) %>%
+    ggplot(aes(months_since_first_project, fill = status)) +
+        geom_histogram() +
+        facet_wrap(~ (acquisition_source_category)) +
+        labs(
+            title = "Corproate referrals skip the 'Emerging' stage",
+            subtitle = "Status of organizations by acquisition source",
+            x = "months since first project",
+            y = "count of organizations"
+        )
+```
+
+A key lever for increasing retention then is to support organizations in the 'Emerging' stage to move up to full membership before becoming 'Delinquent'.
+
+## Metrics and visualizations
+
+For each metric below, I present some motivation for why it might be useful, a high level visualization to track trends, and an organization-level visualization that may be useful for identifying organizations that require intervention. Each of the high level metrics are present as point-in-time snapshots due to the limitations of the data available, but could also be visualized to understand progress over time. The low-level tables may be useful for segmentation, such as direct outreach to organzations via email, mail, or phone. For these examples, I only present the first few rows of the table. 
+
+### Two-year retention and churn
+
+As we saw above, organizations move from 'Emerging' to 'Delinquent' after two years if they do no re-complete the vetting process. Churn is a measure of how many members from a previous point in time are still now. Because vetting alsts two years, we want to understand churn of organzations from two years ago. 
+
+#### Churn: percent of organzations active two years ago that are still active
+
+To determine if someone was active two years ago, we look back two years and see if they already created a project and had an expiration date in the future. 
+Overall, approximately 45% of organzations that were active two years ago are still active. 
+
+```{r}
+
+dat %>%
+    mutate(
+        active_two_years_ago = 
+            vetting_expiration_date > today() %m-% years(20) & 
+                earliest_project_created_date < today() %m-% years(2)) %>%
+    filter(active_two_years_ago) %>%
+    count(`currently_active` = !str_detect(status, "Delinquent")) %>%
+    mutate(percent = percent(n / sum(n), 0.1))
+
+```
+#### Organizations expiring in the next six months
+
+Program stay may want to know which organizations have vetting expiration dates coming up in the next six months, as they may want to intervene with them in some way. 
+
+```{r}
+
+dat %>%
+    filter(vetting_expiration_date > today(),
+           vetting_expiration_date < today() %m+% years(2)) %>%
+    select(name, status, number_of_currently_active_projects,
+           vetting_expiration_date) %>%
+    head(20)
+
+```
+
+### Currently active projects
+
+A key indictor of an organization's connection with GlobalGiving is whether they are actively posting projects to be funded. The chart below shows that almost all 'Superstar' and 'Leader' organizations have created a project within the past year. 
+
+
+```{r}
+
+dat_proj <- dat %>%
+    mutate_at(vars(matches("project.*date")), calc_months_since) %>%
+    replace_na(list(number_of_currently_active_projects = 0))
+
+dat_proj %>%
+    select(matches("project.*date"), status) %>%
+    gather(type, months_since, -status) %>%
+    mutate(type = str_replace_all(type, "_", " ")) %>%
+    ggplot(aes(-months_since, fill = status)) +
+        geom_histogram(binwidth = 3) +
+        facet_wrap(~ type) +
+        geom_vline(xintercept = -12, lty = 2, color = "grey") +
+        labs(
+             x = "months since date",
+             y = "count of organzations",
+             title = "Leaders and Superstars have created projects in the past year",
+             subtitle = "vertical line represents one year ago"
+        )
+```
+
+The number of currently active projects is a less strong indicator of an organization's status, suggesting that having any active project, and the recency of posting that project, is a better metric to track than organizations who have many currently ongoing projects.
+
+```{r}
+
+dat_proj %>% 
+    mutate(
+        current_projects = case_when(
+            number_of_currently_active_projects > 1 ~ "more than one",
+            TRUE ~ as.character(number_of_currently_active_projects)
+        )
+    ) %>%
+    group_by(status) %>%
+    count(current_projects) %>%
+    ggplot(aes(current_projects, n, fill = status)) +
+        geom_col(position = "dodge") +
+        labs(
+            x = "currently active projects",
+            y = "count of organizations",
+            title = "Members have at least one active project"
+        )
+```
+There are two key metrics that we want to track then: number of organizations with at least one active project, and number of organizations that have created a project within the past twelve months.
+
+#### Number of organizations with active projects
+
+```{r}
+
+dat_proj %>%
+    count(orgs_with_active_projects = number_of_currently_active_projects > 0) %>%
+    filter(orgs_with_active_projects) %>%
+    pull(n)
+
+```
+#### Number of organizations who have created a project in the past twelve months
+
+```{r}
+
+dat_proj %>%
+    count(project_created_tweleve_months = most_recent_project_created_date <= 12) %>%
+    filter(project_created_tweleve_months) %>%
+    pull(n)
+
+```
+
+Below is a table which can be used to identify organizations who are 'Partners' or 'Emerging' but have not created a project in the past twelve months.
+
+```{r}
+dat_proj %>%
+    filter(!str_detect(status, "Delinquent"),
+           most_recent_project_created_date > 12) %>%
+    arrange(desc(most_recent_project_created_date)) %>%
+    select(name, status, `Months since most recent project` = most_recent_project_created_date) %>%
+    head(20)
+```
+
+### Last login
+
+How recently an organization has logged-in to their account is similarly a strong indicator of their status. Nearly all 'Leaders' and 'Superstars' have logged in during the past six months.
+
+```{r}
+
+
+dat_login <- dat %>%
+    mutate(months_since_login = calc_months_since(last_login))
+
+dat_login %>%
+    ggplot(aes(-months_since_login, fill = status)) +
+        geom_histogram(binwidth = 3) +
+        geom_vline(xintercept = -6, lty = 2, color = "grey") +
+        labs(
+             x = "months since last login",
+             y = "count of organizations",
+             title = "Superstars and Leaders login to their account at least every six months",
+             subtitle = "vertical line shows six months ago"
+        )
+```
+The key metric to track here then is the number and percent organizations who have logged into their account in the past six months, by their status.
+
+
+#### Number of organizations who have logged into their account in the past six months
+
+```{r}
+
+dat_login %>%
+    count(six_month_login = months_since_login <= 6) %>%
+    mutate(pct = n / sum(n)) %>%
+    filter(six_month_login) %>%
+    select(-six_month_login)
+
+```
+
+#### Number of organizations who have logged into their account in the past six months by status
+
+```{r}
+dat_login %>%
+    group_by(status) %>%
+    count(six_month_login = months_since_login <= 6) %>%
+    mutate(pct = n / sum(n)) %>%
+    filter(six_month_login) %>%
+    select(-six_month_login)
+
+```
+A table similar to the one below would allow staff to extract a list of organizations who have more than six months but less than twelve months since their last login.
+
+```{r}
+
+dat_login %>%
+    filter(months_since_login > 6, months_since_login < 12,
+           !str_detect(status, "Delinquent")) %>%
+    select(name, last_login, status, months_since_login) %>%
+    arrange(last_login) %>%
+    head(20)
+
+
+```
+
+## Next steps and future analyses
+
+### Comparisons over time
+
+One potential issue with this analysis is that is presents a snapshot at the current time. Many of the above measures will be useful to examine overtime, as we want to ensure we are making meaningful progress toward our goals. 
+
+Similarly, current issues such as the COVID-19 pandemic or and increasing need for organizations to generate funds in more creative ways may limit the ways that the current snapshot can be compared to previous points in time. 
+
+### Predictive following descriptive
+
+With more longitudinal data, we may be able to develop some predictions for which organiations are likely to churn. For example, we might develop a model of organiations likely to churn so that we can intervene with those organiations in some way. Or we may want to run some tests to infer which factors which interventions are effective an increasing retention.
+
+## Appendix
+
+Below are some additional notesa bout this analysis. 
+
+### Duplicate records
+
+In the data there are 57 organiations with duplicate names but unique IDs. I treated these as unique organiations for this analysis, but it's possible they should have been handled differently based on why they are duplicates.  
+
+### Surival analysis
+
+A chart like the one below, might be useful for understanding if retention is improving over time. Because of limitations with the data available, this chart doesn't show a valid measure of churn, but demonstrates what a chart tracking this could look like. 
+
+```{r}
+dat_surv <- dat %>%
+    filter(!is.na(earliest_project_created_date)) %>%
+    mutate(
+        time_to_exp = as.integer(
+            vetting_expiration_date - as.Date(earliest_project_created_date)
+        ),
+        year_first_project = as.character(year(earliest_project_created_date)),
+        status = !str_detect(status, "Delinquent")
+    ) %>%
+    filter(year_first_project > 2015)
+
+surv_fit <- survfit(Surv(time_to_exp, status) ~ year_first_project,
+                    data = dat_surv)
+
+tidy(surv_fit) %>%
+    filter(time > 0) %>%
+    ggplot(aes(time / 365.25, estimate, color = strata)) +
+        geom_line() +
+        labs(y = "percent active",
+             x = "years since first project")
+```
+
+
+
+## Country
+
+There does not appear to be any discernable trend between country/region and the percent of organizations that are delinquent. 
+
+```{r}
+
+world <- map_data("world")
+
+
+dat %>%
+    anti_join(world, by = c("country_of_registration" = "region")) %>%
+    count(country_of_registration, sort = TRUE)
+
+dat_country <- dat %>%
+    mutate(
+        country_of_registration = case_when(
+            country_of_registration == "United States" ~ "USA",
+            country_of_registration == "United Kingdom" ~ "UK",
+            str_detect(country_of_registration, "Tanzania") ~ "Tanzania",
+            str_detect(country_of_registration, "Congo, Democratic") ~ "Democratic Republic of the Congo",
+            TRUE ~ country_of_registration
+        )
+    )
+
+country_summary <- dat_country %>%
+    group_by(country_of_registration) %>%
+    summarise(n_delinquent = sum(str_detect(status, "Delinquent")),
+              n = n()) %>%
+    filter(n > 50) %>%
+    mutate(pct_delinquent = n_delinquent / n)
+
+
+world %>%
+    left_join(country_summary, by = c("region" = "country_of_registration")) %>%
+    ggplot(aes(long, lat, group = group)) +
+        geom_polygon(aes(fill = pct_delinquent), color = "grey") +
+        scale_fill_gradient2(low = "blue", high = "red", midpoint = 0.5,
+                             na.value = "grey90") +
+        theme_void()
+
+```
+```{r}
+
+country_summary %>%
+    arrange(desc(pct_delinquent)) %>%
+    head(20)
+
+```
+

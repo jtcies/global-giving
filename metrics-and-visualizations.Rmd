@@ -9,7 +9,7 @@ library(broom)
 
 theme_set(theme_minimal())
 
-## cacluate the months since another variable
+## calculate the months since another variable
 calc_months_since <- function(date) {
     require(lubridate)
     month(as.period(interval(date, today()), "month"))
@@ -43,7 +43,7 @@ There are various ways to measure whether an organization is retained, such as:
 - Has had an active or funded project in the past year (or some other time frame);
 - Has an active vetting or status.
 
-As organizations may have different numbers of projects at different times, 'status' is the best variable to indicate whether an organzation is active ('Emerging' or above) or 'Delinquent'.  
+As organizations may have different numbers of projects at different times, 'status' is the best variable to indicate whether an organization is active ('Emerging' or above) or 'Delinquent'.  
 
 The chart below shows the count of organizations at each status compared to the number of days since their first project. I've lumped Partner, Leader, and Superstar statuses together into a 'Member' status.
 
@@ -84,7 +84,7 @@ The goal then, is to determine how we can successfully move organizations from '
 
 How does an organization become 'Delinquent'? 
 
-All organizations who have a vetting expiration date in the past are delinquent. Similary, organizations do not have an expiration more than two years in the future, regardless of status. 
+All organizations who have a vetting expiration date in the past are delinquent. Similarly, organizations do not have an expiration more than two years in the future, regardless of status. 
 
 ```{r}
 
@@ -115,11 +115,11 @@ dat %>%
             x = "months since first project creation",
             y = "count of organizations",
             title = "The Accelerator Program allows organizations to skip the 'Emerging' stage",
-            subtitle = "Status of organizations completing Accelerator Prog5ram"
+            subtitle = "Status of organizations completing Accelerator Program"
         )
 
 ```
-Similarly, coporate referrals also skip the 'Emerging' stage. 
+Similarly, corporate referrals also skip the 'Emerging' stage. 
 
 ```{r}
 
@@ -132,7 +132,7 @@ dat %>%
         geom_histogram() +
         facet_wrap(~ (acquisition_source_category)) +
         labs(
-            title = "Corproate referrals skip the 'Emerging' stage",
+            title = "Corporate referrals skip the 'Emerging' stage",
             subtitle = "Status of organizations by acquisition source",
             x = "months since first project",
             y = "count of organizations"
@@ -143,16 +143,16 @@ A key lever for increasing retention then is to support organizations in the 'Em
 
 ## Metrics and visualizations
 
-For each metric below, I present some motivation for why it might be useful, a high level visualization to track trends, and an organization-level visualization that may be useful for identifying organizations that require intervention. Each of the high level metrics are present as point-in-time snapshots due to the limitations of the data available, but could also be visualized to understand progress over time. The low-level tables may be useful for segmentation, such as direct outreach to organzations via email, mail, or phone. For these examples, I only present the first few rows of the table. 
+For each metric below, I present some motivation for why it might be useful, a high level visualization to track trends, and an organization-level visualization that may be useful for identifying organizations that require intervention. Each of the high level metrics are present as point-in-time snapshots due to the limitations of the data available, but could also be visualized to understand progress over time. The low-level tables may be useful for segmentation, such as direct outreach to organizations via email, mail, or phone. For these examples, I only present the first few rows of the table. 
 
 ### Two-year retention and churn
 
-As we saw above, organizations move from 'Emerging' to 'Delinquent' after two years if they do no re-complete the vetting process. Churn is a measure of how many members from a previous point in time are still now. Because vetting alsts two years, we want to understand churn of organzations from two years ago. 
+As we saw above, organizations move from 'Emerging' to 'Delinquent' after two years if they do no re-complete the vetting process. Churn is a measure of how many members from a previous point in time are still now. Because vetting lasts two years, we want to understand churn of organizations from two years ago. 
 
-#### Churn: percent of organzations active two years ago that are still active
+#### Churn: percent of organizations active two years ago that are still active
 
 To determine if someone was active two years ago, we look back two years and see if they already created a project and had an expiration date in the future. 
-Overall, approximately 45% of organzations that were active two years ago are still active. 
+Overall, approximately 45% of organizations that were active two years ago are still active. 
 
 ```{r}
 
@@ -183,7 +183,7 @@ dat %>%
 
 ### Currently active projects
 
-A key indictor of an organization's connection with GlobalGiving is whether they are actively posting projects to be funded. The chart below shows that almost all 'Superstar' and 'Leader' organizations have created a project within the past year. 
+A key indicator of an organization's connection with GlobalGiving is whether they are actively posting projects to be funded. The chart below shows that almost all 'Superstar' and 'Leader' organizations have created a project within the past year. 
 
 
 ```{r}
@@ -202,7 +202,7 @@ dat_proj %>%
         geom_vline(xintercept = -12, lty = 2, color = "grey") +
         labs(
              x = "months since date",
-             y = "count of organzations",
+             y = "count of organizations",
              title = "Leaders and Superstars have created projects in the past year",
              subtitle = "vertical line represents one year ago"
         )
@@ -334,17 +334,17 @@ Similarly, current issues such as the COVID-19 pandemic or and increasing need f
 
 ### Predictive following descriptive
 
-With more longitudinal data, we may be able to develop some predictions for which organiations are likely to churn. For example, we might develop a model of organiations likely to churn so that we can intervene with those organiations in some way. Or we may want to run some tests to infer which factors which interventions are effective an increasing retention.
+With more longitudinal data, we may be able to develop some predictions for which organizations are likely to churn. For example, we might develop a model of organizations likely to churn so that we can intervene with those organizations in some way. Or we may want to run some tests to infer which factors which interventions are effective an increasing retention.
 
 ## Appendix
 
-Below are some additional notesa bout this analysis. 
+Below are some additional notes about this analysis. 
 
 ### Duplicate records
 
-In the data there are 57 organiations with duplicate names but unique IDs. I treated these as unique organiations for this analysis, but it's possible they should have been handled differently based on why they are duplicates.  
+In the data there are 57 organizations with duplicate names but unique IDs. I treated these as unique organizations for this analysis, but it's possible they should have been handled differently based on why they are duplicates.  
 
-### Surival analysis
+### Survival analysis
 
 A chart like the one below, might be useful for understanding if retention is improving over time. Because of limitations with the data available, this chart doesn't show a valid measure of churn, but demonstrates what a chart tracking this could look like. 
 
@@ -375,7 +375,7 @@ tidy(surv_fit) %>%
 
 ## Country
 
-There does not appear to be any discernable trend between country/region and the percent of organizations that are delinquent. 
+There does not appear to be any discernible trend between country/region and the percent of organizations that are delinquent. 
 
 ```{r}
 

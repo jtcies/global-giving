@@ -1,4 +1,10 @@
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      fig.width = 10, fig.align = "center", fig.asp = 0.618)
+```
 ```{r}
+
 library(tidyverse)
 library(lubridate)
 library(tidytext)
@@ -163,7 +169,8 @@ dat %>%
                 earliest_project_created_date < today() %m-% years(2)) %>%
     filter(active_two_years_ago) %>%
     count(`currently_active` = !str_detect(status, "Delinquent")) %>%
-    mutate(percent = percent(n / sum(n), 0.1))
+    mutate(percent = percent(n / sum(n), 0.1)) %>%
+    knitr::kable()
 
 ```
 #### Organizations expiring in the next six months
@@ -177,7 +184,8 @@ dat %>%
            vetting_expiration_date < today() %m+% years(2)) %>%
     select(name, status, number_of_currently_active_projects,
            vetting_expiration_date) %>%
-    head(20)
+    head(20) %>%
+    knitr::kable()
 
 ```
 
@@ -238,7 +246,8 @@ There are two key metrics that we want to track then: number of organizations wi
 dat_proj %>%
     count(orgs_with_active_projects = number_of_currently_active_projects > 0) %>%
     filter(orgs_with_active_projects) %>%
-    pull(n)
+    pull(n) %>%
+    knitr::kable()
 
 ```
 #### Number of organizations who have created a project in the past twelve months
@@ -248,7 +257,8 @@ dat_proj %>%
 dat_proj %>%
     count(project_created_tweleve_months = most_recent_project_created_date <= 12) %>%
     filter(project_created_tweleve_months) %>%
-    pull(n)
+    pull(n) %>%
+    knitr::kable()
 
 ```
 
@@ -260,7 +270,9 @@ dat_proj %>%
            most_recent_project_created_date > 12) %>%
     arrange(desc(most_recent_project_created_date)) %>%
     select(name, status, `Months since most recent project` = most_recent_project_created_date) %>%
-    head(20)
+    head(20) %>%
+    knitr::kable()
+
 ```
 
 ### Last login
@@ -268,7 +280,6 @@ dat_proj %>%
 How recently an organization has logged-in to their account is similarly a strong indicator of their status. Nearly all 'Leaders' and 'Superstars' have logged in during the past six months.
 
 ```{r}
-
 
 dat_login <- dat %>%
     mutate(months_since_login = calc_months_since(last_login))
@@ -295,7 +306,8 @@ dat_login %>%
     count(six_month_login = months_since_login <= 6) %>%
     mutate(pct = n / sum(n)) %>%
     filter(six_month_login) %>%
-    select(-six_month_login)
+    select(-six_month_login) %>%
+    knitr::kable()
 
 ```
 
@@ -307,7 +319,8 @@ dat_login %>%
     count(six_month_login = months_since_login <= 6) %>%
     mutate(pct = n / sum(n)) %>%
     filter(six_month_login) %>%
-    select(-six_month_login)
+    select(-six_month_login) %>%
+    knitr::kable()
 
 ```
 A table similar to the one below would allow staff to extract a list of organizations who have more than six months but less than twelve months since their last login.
@@ -319,7 +332,8 @@ dat_login %>%
            !str_detect(status, "Delinquent")) %>%
     select(name, last_login, status, months_since_login) %>%
     arrange(last_login) %>%
-    head(20)
+    head(20) %>%
+    knitr::kable()
 
 
 ```
